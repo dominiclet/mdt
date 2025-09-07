@@ -17,11 +17,6 @@ impl fmt::Display for TagType {
     }
 }
 
-pub struct FileInfo {
-    pub file_path: path::PathBuf,
-    pub todos: Vec<TagItem>,
-}
-
 pub struct TagItem {
     pub tag_type: TagType,
     pub content: String,
@@ -30,47 +25,78 @@ pub struct TagItem {
 pub fn parse_file(file_path: String) -> std::io::Result<FileInfo> {
     let file_content = fs::read_to_string(&file_path)?;
     let parser: pulldown_cmark::Parser = pulldown_cmark::Parser::new(&file_content);
-    let iter = TextMergeStream::new(parser);
+    let mut iter = TextMergeStream::new(parser);
 
-    let mut within_heading: bool = false;
-    let mut heading_buffer: String = String::new();
-    let mut todos: Vec<TagItem> = Vec::new();
+    let mut file_info = new_file_info(file_path);
+    file_info.handle_generic_events(&mut iter);
 
-    for event in iter {
+    Ok(file_info)
+}
+
+pub struct FileInfo {
+    pub file_path: path::PathBuf,
+    pub todos: Vec<TagItem>,
+}
+
+fn new_file_info(file_path: String) -> FileInfo {
+    let mut path_buf = path::PathBuf::new();
+    path_buf.push(file_path);
+    return FileInfo {
+        file_path: path_buf,
+        todos: Vec::new(),
+    };
+}
+
+impl FileInfo {
+    // Generic "stateless" event handler (parser starts here as the initial state)
+    fn handle_generic_events<'a>(
+        &mut self,
+        iter: &mut TextMergeStream<'a, pulldown_cmark::Parser<'a>>,
+    ) {
+        let event = match iter.next() {
+            Some(event) => event,
+            None => return,
+        };
         match event {
             Event::Start(tag) => match tag {
-                Tag::Heading { .. } => {
-                    within_heading = true;
-                }
-                _ => {}
+                Tag::Heading { .. } => self.handle_heading(iter, &mut String::new()),
+                _ => self.handle_generic_events(iter),
             },
+            _ => self.handle_generic_events(iter),
+        }
+    }
+
+    // Handler for within heading state
+    fn handle_heading<'a>(
+        &mut self,
+        iter: &mut TextMergeStream<'a, pulldown_cmark::Parser<'a>>,
+        buf: &mut String,
+    ) {
+        let event = match iter.next() {
+            Some(event) => event,
+            None => return,
+        };
+        match event {
+            Event::Text(txt) => {
+                let text = &txt.into_string();
+                buf.push_str(text);
+                self.handle_heading(iter, buf);
+            }
             Event::End(tag_end) => match tag_end {
                 TagEnd::Heading(_) => {
-                    within_heading = false;
-                    if let Some(todo_content) = heading_buffer.strip_prefix(TODO_PREFIX) {
-                        todos.push(TagItem {
+                    if let Some(todo_content) = buf.strip_prefix(TODO_PREFIX) {
+                        // Add to tags items if heading contains required prefix
+                        self.todos.push(TagItem {
                             tag_type: TagType::TODO,
                             content: todo_content.trim().to_string(),
                         });
                     }
-                    heading_buffer.clear();
+                    self.handle_generic_events(iter);
                 }
-                _ => {}
+                _ => self.handle_heading(iter, buf),
             },
-            Event::Text(txt) => {
-                if within_heading {
-                    let text = &txt.into_string();
-                    heading_buffer.push_str(text);
-                }
-            }
-            _ => {}
+            _ => self.handle_heading(iter, buf),
         }
+        return;
     }
-    let mut path_buf = path::PathBuf::new();
-    path_buf.push(file_path);
-
-    Ok(FileInfo {
-        file_path: path_buf,
-        todos: todos,
-    })
 }

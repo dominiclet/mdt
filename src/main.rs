@@ -1,19 +1,43 @@
-use clap::Parser as ClapParser;
+use std::fs::{OpenOptions};
 
+use clap::Parser as ClapParser;
+use tracing::info;
+use tracing_subscriber::util::SubscriberInitExt;
+
+mod commands;
+mod config;
 mod parser;
 mod printer;
-mod config;
-mod commands;
 
 #[derive(ClapParser)]
 #[command(version, about, long_about = None)]
 struct Mdt {
     #[arg(short, long)]
     file: Option<String>,
+
+    #[arg(short, long)]
+    debug: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let configs: config::Config = config::read_config()?;
-    commands::show_status(configs)?;
+    setup_logger();
+    info!("Starting mdt");
+    let _ = Mdt::parse();
+    let ctx = commands::get_context()?;
+    commands::show_status(&ctx)?;
     Ok(())
+}
+
+fn setup_logger() {
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("./mdt.log")
+        .unwrap();
+
+    let subscriber = tracing_subscriber::fmt()
+        .with_writer(file)
+        .finish();
+    subscriber.init();
+
 }

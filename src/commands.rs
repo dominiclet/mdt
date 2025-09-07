@@ -1,24 +1,40 @@
 use std::{fs, io, path::Path};
 
-use crate::{config::Config, parser, printer::print_status_overview};
+use tracing::{info, warn};
+
+use crate::{
+    config::{self, Config},
+    parser,
+    printer::print_status_overview,
+};
 
 const MD_FILE_EXT: &str = "md";
 
-pub fn show_status(conf: Config) -> Result<(), Box<dyn std::error::Error>> {
-    let file_paths = get_md_files(Path::new(conf.notes_directory.as_str()))?;
+pub struct Context {
+    pub config: Config,
+}
+
+pub fn get_context() -> Result<Context, Box<dyn std::error::Error>> {
+    let config = config::read_config()?;
+    return Ok(Context { config: config });
+}
+
+pub fn show_status(ctx: &Context) -> Result<(), Box<dyn std::error::Error>> {
+    let file_paths = get_md_files(Path::new(ctx.config.notes_directory.as_str()))?;
+    info!("Found the following md files: {:?}", file_paths);
 
     let mut file_infos: Vec<parser::FileInfo> = Vec::new();
     for file_path in file_paths {
-        let file_info = match parser::parse_file(file_path) {
+        let file_info = match parser::parse_file(file_path.clone()) {
             Ok(info) => info,
-            Err(_e) => {
-                // TODO: log error
+            Err(e) => {
+                warn!("Error occurred in parsing file [{}]: {}", file_path, e);
                 continue;
             }
         };
         file_infos.push(file_info);
     }
-    print_status_overview(file_infos, conf);
+    print_status_overview(ctx, file_infos);
 
     Ok(())
 }

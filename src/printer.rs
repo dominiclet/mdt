@@ -1,13 +1,13 @@
-use crate::{config, parser};
+use crate::{commands, config, parser};
 use colored::Colorize;
 
 const NEWLINE_CHAR: &str = "\n";
 const DIVIDER_SEQ: &str = "--------------------------------";
 const HARD_DIVIDER_SEQ: &str = "========================================";
 
-pub fn print_status_overview(file_infos: Vec<parser::FileInfo>, conf: config::Config) {
+pub fn print_status_overview(ctx: &commands::Context, file_infos: Vec<parser::FileInfo>) {
     let mut sb = String::new();
-    sb.push_str(get_preamble(conf).as_str());
+    sb.push_str(get_preamble(&ctx.config).as_str());
     sb.push_str(NEWLINE_CHAR);
     for file_info in file_infos {
         if file_info.todos.len() == 0 {
@@ -29,7 +29,7 @@ pub fn print_status_overview(file_infos: Vec<parser::FileInfo>, conf: config::Co
     print!("{}", sb);
 }
 
-fn get_preamble(conf: config::Config) -> String {
+fn get_preamble(conf: &config::Config) -> String {
     let mut sb = String::new();
     sb.push_str(format!("{}{}", HARD_DIVIDER_SEQ, NEWLINE_CHAR).as_str());
     sb.push_str("mdt\n");
@@ -50,5 +50,5 @@ fn format_items(items: Vec<parser::TagItem>) -> String {
 
 fn format_item(item: parser::TagItem) -> String {
     let tag_part = item.tag_type.to_string() + ":";
-    format!("{} {}", tag_part.cyan(), item.content)
+    format!("{} {}", tag_part.bright_red(), item.content)
 }
