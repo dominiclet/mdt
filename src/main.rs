@@ -21,7 +21,7 @@ struct Mdt {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_logger();
-    info!("Starting mdt");
+    info!("New invocation");
     let _ = Mdt::parse();
     let ctx = commands::get_context()?;
     commands::show_status(&ctx)?;
@@ -39,5 +39,4 @@ fn setup_logger() {
         .with_writer(file)
         .finish();
     subscriber.init();
-
 }

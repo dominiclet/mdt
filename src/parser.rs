@@ -9,6 +9,13 @@ pub enum TagType {
     TODO,
 }
 
+pub enum TagItemContent {
+    List {
+        is_numbered: bool,
+        items: Vec<String>,
+    },
+}
+
 impl fmt::Display for TagType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -19,7 +26,8 @@ impl fmt::Display for TagType {
 
 pub struct TagItem {
     pub tag_type: TagType,
-    pub content: String,
+    pub title: String,
+    pub content: Option<TagItemContent>,
 }
 
 pub fn parse_file(file_path: String) -> std::io::Result<FileInfo> {
@@ -84,12 +92,9 @@ impl FileInfo {
             }
             Event::End(tag_end) => match tag_end {
                 TagEnd::Heading(_) => {
-                    if let Some(todo_content) = buf.strip_prefix(TODO_PREFIX) {
-                        // Add to tags items if heading contains required prefix
-                        self.todos.push(TagItem {
-                            tag_type: TagType::TODO,
-                            content: todo_content.trim().to_string(),
-                        });
+                    if let Some(title) = buf.strip_prefix(TODO_PREFIX) {
+                        // After an item prefix, expect item content
+                        self.handle_tag_item_content(iter, TagType::TODO, title);
                     }
                     self.handle_generic_events(iter);
                 }
@@ -98,5 +103,92 @@ impl FileInfo {
             _ => self.handle_heading(iter, buf),
         }
         return;
+    }
+
+    fn handle_tag_item_content<'a>(
+        &mut self,
+        iter: &mut TextMergeStream<'a, pulldown_cmark::Parser<'a>>,
+        tag_type: TagType,
+        title: &str,
+    ) {
+        let event = match iter.next() {
+            Some(ev) => ev,
+            None => {
+                self.todos.push(TagItem {
+                    tag_type: tag_type,
+                    title: title.to_string(),
+                    content: None,
+                });
+                // End tag item
+                return self.handle_generic_events(iter);
+            }
+        };
+        match event {
+            Event::Start(tag) => match tag {
+                Tag::List(num) => {
+                    let list = self.collect_list(iter, num != None);
+                    self.todos.push(TagItem {
+                        tag_type: tag_type,
+                        title: title.to_string(),
+                        content: Some(list),
+                    });
+                    return self.handle_generic_events(iter);
+                }
+                _ => {}
+            },
+            _ => {}
+        };
+        self.todos.push(TagItem {
+            tag_type: tag_type,
+            title: title.to_string(),
+            content: None,
+        });
+        // End tag item
+        self.handle_generic_events(iter);
+    }
+
+    fn collect_list<'a>(
+        &mut self,
+        iter: &mut TextMergeStream<'a, pulldown_cmark::Parser<'a>>,
+        is_numbered: bool,
+    ) -> TagItemContent {
+        let mut items: Vec<String> = Vec::new();
+        while let Some(event) = iter.next() {
+            match event {
+                Event::End(tag_end) => {
+                    if let TagEnd::List(_) = tag_end {
+                        break;
+                    }
+                },
+                Event::Start(tag) => {
+                    if tag == Tag::Item {
+                        let l_item_content = self.collect_list_item(iter);
+                        items.push(l_item_content);
+                    }
+                },
+                _ => {
+                    break;
+                }
+            }
+        }
+        return TagItemContent::List {
+            is_numbered: is_numbered,
+            items: items,
+        };
+    }
+
+    fn collect_list_item<'a>(
+        &mut self,
+        iter: &mut TextMergeStream<'a, pulldown_cmark::Parser<'a>>,
+    ) -> String {
+        let mut str_buf = String::new();
+        while let Some(event) = iter.next() {
+            if let Event::Text(content) = event {
+                str_buf.push_str(&content);
+                continue;
+            }
+            break;
+        }
+        return str_buf;
     }
 }

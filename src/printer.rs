@@ -1,4 +1,4 @@
-use crate::{commands, config, parser};
+use crate::{commands, config, parser::{self, TagItemContent}};
 use colored::Colorize;
 
 const NEWLINE_CHAR: &str = "\n";
@@ -41,14 +41,28 @@ fn get_preamble(conf: &config::Config) -> String {
 fn format_items(items: Vec<parser::TagItem>) -> String {
     let mut res = String::new();
     for item in items {
-        let mut item_str = format_item(item);
-        item_str.push('\n');
+        let mut item_str = format_item(&item);
+        item_str.push_str(NEWLINE_CHAR);
         res.push_str(item_str.as_str());
+        if let Some(content) = item.content {
+            match content {
+                TagItemContent::List {
+                    is_numbered: _,
+                    items: list_items
+                } => {
+                    for list_item in list_items {
+                        res.push_str(format!("- {}", list_item).as_str());
+                        res.push_str(NEWLINE_CHAR);
+                    }
+                }
+            }
+        }
+        res.push_str(NEWLINE_CHAR);
     }
     res
 }
 
-fn format_item(item: parser::TagItem) -> String {
+fn format_item(item: &parser::TagItem) -> String {
     let tag_part = item.tag_type.to_string() + ":";
-    format!("{} {}", tag_part.bright_red(), item.content)
+    format!("{} {}", tag_part.bright_red(), item.title)
 }
